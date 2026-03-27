@@ -17,6 +17,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT }}
           envs: DATABASE_URL,JWT_SECRET
+          command_timeout: 10m
           script: |
             # 첫 배포 시 클론, 이후엔 pull
             if [ ! -d /srv/tpk-mvp/be/.git ]; then
@@ -42,6 +43,7 @@ jobs:
             # 기존 프로세스 종료 후 재시작
             pkill -f "uvicorn app.main:app" || true
             nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > /srv/tpk-mvp/be/app.log 2>&1 &
+            disown
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
