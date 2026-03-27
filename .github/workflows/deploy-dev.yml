@@ -19,31 +19,44 @@ jobs:
           envs: DATABASE_URL,JWT_SECRET
           command_timeout: 10m
           script: |
-            # 첫 배포 시 클론, 이후엔 pull
+            # 1. 프로젝트 폴더 존재 여부 확인 및 이동
             if [ ! -d /srv/tpk-mvp/be/.git ]; then
               git clone https://github.com/${{ github.repository }}.git /srv/tpk-mvp/be
-            else
-              cd /srv/tpk-mvp/be && git pull origin main
             fi
 
             cd /srv/tpk-mvp/be
+            git fetch origin main
+            git reset --hard origin/main
 
-            # .env 파일 생성
-            echo "DATABASE_URL=${DATABASE_URL}" > .env
-            echo "JWT_SECRET=${JWT_SECRET}" >> .env
+            # 2. .env 파일 생성 (Here Doc 사용으로 더 깔끔하게)
+            cat <<EOF > .env
+            DATABASE_URL=${DATABASE_URL}
+            JWT_SECRET=${JWT_SECRET}
+            EOF
 
-            # venv 없으면 생성
+            # 3. venv 설정 및 의존성 설치
             if [ ! -d venv ]; then
               python3 -m venv venv
             fi
-
-            # 의존성 설치
             venv/bin/pip install -r requirments.txt --quiet
 
-            # 기존 프로세스 종료 후 재시작
-            pkill -f "uvicorn app.main:app" || true
-            nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > /srv/tpk-mvp/be/app.log 2>&1 </dev/null &
-            disown $!
+            # 4. 기존 프로세스 종료 (8000 포트 점유 기준 - 가장 확실함)
+            # fuser가 없다면 sudo apt-get install psmisc로 설치 필요
+            fuser -k 8000/tcp || true
+            sleep 2
+
+            # 5. 백그라운드 실행 (세션이 끊겨도 죽지 않도록 완전 분리)
+            # stdout/stderr 로그를 남기고, 입력값은 /dev/null로 처리
+            nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 > /srv/tpk-mvp/be/app.log 2>&1 &
+
+            # 6. 프로세스가 정상적으로 떴는지 확인 (선택 사항)
+            sleep 3
+            if ps aux | grep -v grep | grep "uvicorn app.main:app" > /dev/null; then
+              echo "✅ Deployment Successful!"
+            else
+              echo "❌ Deployment Failed: Server is not running."
+              exit 1
+            fi
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
