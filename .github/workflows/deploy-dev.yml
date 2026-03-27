@@ -1,0 +1,44 @@
+name: Deploy to Dev Server
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          envs: DATABASE_URL,JWT_SECRET
+          script: |
+            # 첫 배포 시 클론, 이후엔 pull
+            if [ ! -d /srv/tpk-mvp/be ]; then
+              sudo mkdir -p /srv/tpk-mvp/be
+              sudo chown $USER:$USER /srv/tpk-mvp/be
+              git clone https://github.com/${{ github.repository }}.git /srv/tpk-mvp/be
+            else
+              cd /srv/tpk-mvp/be && git pull origin main
+            fi
+
+            cd /srv/tpk-mvp/be
+
+            # .env 파일 생성
+            echo "DATABASE_URL=${DATABASE_URL}" > .env
+            echo "JWT_SECRET=${JWT_SECRET}" >> .env
+
+            # 의존성 설치
+            pip install -r requirments.txt --quiet
+
+            # 기존 프로세스 종료 후 재시작
+            pkill -f "uvicorn app.main:app" || true
+            nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > /srv/tpk-mvp/be/app.log 2>&1 &
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
