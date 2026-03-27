@@ -20,8 +20,6 @@ jobs:
           script: |
             # 첫 배포 시 클론, 이후엔 pull
             if [ ! -d /srv/tpk-mvp/be/.git ]; then
-              sudo mkdir -p /srv/tpk-mvp
-              sudo chown $(whoami):$(whoami) /srv/tpk-mvp
               git clone https://github.com/${{ github.repository }}.git /srv/tpk-mvp/be
             else
               cd /srv/tpk-mvp/be && git pull origin main
@@ -30,10 +28,8 @@ jobs:
             cd /srv/tpk-mvp/be
 
             # .env 파일 생성
-            sudo tee .env > /dev/null << EOF
-            DATABASE_URL=${DATABASE_URL}
-            JWT_SECRET=${JWT_SECRET}
-            EOF
+            echo "DATABASE_URL=${DATABASE_URL}" > .env
+            echo "JWT_SECRET=${JWT_SECRET}" >> .env
 
             # venv 없으면 생성
             if [ ! -d venv ]; then
